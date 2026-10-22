@@ -1,8 +1,10 @@
 import sys
 import os
+import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from src.lib.tickets import list_tickets, get_ticket, tickets_for_customer
+from server import app
 
 assert len(list_tickets()) == 50, "expected 50 seeded tickets"
 
@@ -19,5 +21,31 @@ assert bug_ticket["customer_id"] == "CUST-0007", (
 assert len(tickets_for_customer("CUST-0007")) >= 1, (
     "the missing customer must still have at least one ticket on file"
 )
+
+with open(os.path.join(os.path.dirname(__file__), "..", "src", "fixtures", "tickets.json")) as f:
+    tickets = json.load(f)
+
+status = tickets[0]["status"]
+expected = [t for t in tickets if t["status"] == status]
+assert list_tickets(status) == expected
+assert list_tickets("nonsense") == []
+assert list_tickets("") == [t for t in tickets if t["status"] == ""]
+assert list_tickets() == tickets
+
+with app.test_client() as client:
+    response = client.get("/api/tickets", query_string={"status": status})
+    assert response.status_code == 200
+    filtered = response.get_json()
+    assert len(filtered) == len(expected)
+    assert all(t["status"] == status for t in filtered)
+    assert filtered == expected
+
+    response = client.get("/api/tickets?status=nonsense")
+    assert response.status_code == 200
+    assert response.get_json() == []
+
+    response = client.get("/api/tickets")
+    assert response.status_code == 200
+    assert response.get_json() == tickets
 
 print("test_tickets.py: OK")

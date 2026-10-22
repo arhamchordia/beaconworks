@@ -1,5 +1,5 @@
 """BeaconWorks ticket dashboard -- Flask app. Run: python3 server.py"""
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 import os
 
 from src.lib.customers import get_customer, list_customers
@@ -15,9 +15,7 @@ def index():
 
 @app.route("/api/tickets")
 def api_tickets():
-    # Lesson 13.4 adds a `?status=` query filter here. Starter repo returns
-    # everything, unfiltered, on purpose.
-    return jsonify(list_tickets())
+    return jsonify(list_tickets(request.args.get("status")))
 
 
 @app.route("/api/tickets/<ticket_id>")

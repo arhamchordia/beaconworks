@@ -35,5 +35,4 @@ routes with the Flask test client and, when relevant, the running server.
 
 - The customer route errors for customers missing from the fixtures,
   for example `CUST-0007`. Do not fix this as part of unrelated work.
-- The tickets route has no status filter.
 - `compute_score` in `src/lib/priority.py` is defined but not used by the server yet.
