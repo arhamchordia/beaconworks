@@ -18,6 +18,11 @@ def api_tickets():
     return jsonify(list_tickets(request.args.get("status")))
 
 
+@app.route("/api/health")
+def api_health():
+    return jsonify({"status": "ok"})
+
+
 @app.route("/api/tickets/<ticket_id>")
 def api_ticket(ticket_id):
     ticket = get_ticket(ticket_id)
