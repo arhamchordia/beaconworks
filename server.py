@@ -3,7 +3,7 @@ from flask import Flask, jsonify, request, send_from_directory
 import os
 
 from src.lib.customers import get_customer, list_customers
-from src.lib.tickets import list_tickets, get_ticket, tickets_for_customer
+from src.lib.tickets import list_tickets, get_ticket, tickets_for_customer, summarize_tickets
 
 app = Flask(__name__, static_folder="public", static_url_path="")
 
@@ -21,6 +21,11 @@ def api_tickets():
 @app.route("/api/health")
 def api_health():
     return jsonify({"status": "ok"})
+
+
+@app.route("/api/tickets/summary")
+def api_tickets_summary():
+    return jsonify(summarize_tickets(list_tickets()))
 
 
 @app.route("/api/tickets/<ticket_id>")
