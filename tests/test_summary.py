@@ -27,8 +27,18 @@ with app.test_client() as client:
     assert result["total"] == len(tickets)
     assert result == summary
 
-    response = client.get("/api/tickets/summary?status=nonsense")
-    assert response.status_code == 200
-    assert response.get_json() == summary
+    for filters in ({"status": "open"}, {"urgency": "high"},
+                    {"customer_id": "CUST-0007"},
+                    {"status": "open", "urgency": "high"},
+                    {"customer_id": "CUST-9999"}):
+        matched = client.get("/api/tickets", query_string=filters).get_json()
+        expected = {"total": len(matched), "by_status": dict(Counter(t["status"] for t in matched)),
+                    "by_urgency": dict(Counter(t["urgency"] for t in matched))}
+        response = client.get("/api/tickets/summary", query_string=filters)
+        assert response.status_code == 200
+        assert response.get_json() == expected
+        # Summary always covers the full matching set, even with an empty page.
+        paginated = dict(filters, offset=999, limit=1, sort="id", order="desc")
+        assert client.get("/api/tickets/summary", query_string=paginated).get_json() == expected
 
 print("test_summary.py: OK")

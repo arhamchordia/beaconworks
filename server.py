@@ -3,7 +3,10 @@ from flask import Flask, jsonify, request, send_from_directory
 import os
 
 from src.lib.customers import get_customer, list_customers
-from src.lib.tickets import list_tickets, get_ticket, tickets_for_customer, summarize_tickets
+from src.lib.tickets import (
+    get_ticket, tickets_for_customer, summarize_tickets, parse_ticket_query,
+    filter_tickets, query_tickets,
+)
 
 app = Flask(__name__, static_folder="public", static_url_path="")
 
@@ -15,7 +18,13 @@ def index():
 
 @app.route("/api/tickets")
 def api_tickets():
-    return jsonify(list_tickets(request.args.get("status")))
+    try:
+        tickets, total = query_tickets(parse_ticket_query(request.args))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    response = jsonify(tickets)
+    response.headers["X-Total-Count"] = str(total)
+    return response
 
 
 @app.route("/api/health")
@@ -25,7 +34,11 @@ def api_health():
 
 @app.route("/api/tickets/summary")
 def api_tickets_summary():
-    return jsonify(summarize_tickets(list_tickets()))
+    try:
+        tickets = filter_tickets(parse_ticket_query(request.args))
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+    return jsonify(summarize_tickets(tickets))
 
 
 @app.route("/api/tickets/<ticket_id>")
