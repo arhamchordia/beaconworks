@@ -25,6 +25,7 @@ def days_open(created_date_iso: str, now: datetime = None) -> int:
 
 
 def compute_score(ticket: dict, customer_segment: str, now: datetime = None) -> float:
+    """Score a ticket; a missing segment (None) contributes zero segment points."""
     uw = URGENCY_WEIGHT.get(ticket["urgency"], 0)
     sw = SEGMENT_WEIGHT.get(customer_segment, 0)
     capped = min(days_open(ticket["created_date"], now), 14)
