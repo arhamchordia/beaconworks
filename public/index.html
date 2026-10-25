@@ -13,17 +13,17 @@
 </head>
 <body>
   <h1>BeaconWorks Ticket Dashboard</h1>
-  <p>Course starter UI -- Sections 13-17. No status filter and no priority
-  column yet; both are added during the course (13.4 and 15.2).</p>
+  <p>Priority scores are a beta prioritization aid, based on urgency, customer segment, and ticket age.</p>
   <table id="tickets"><thead>
-    <tr><th>Ticket</th><th>Customer</th><th>Subject</th><th>Category</th><th>Urgency</th><th>Status</th></tr>
+    <tr><th>Ticket</th><th>Customer</th><th>Subject</th><th>Category</th><th>Urgency</th><th>Status</th><th>Priority score (beta)</th></tr>
   </thead><tbody></tbody></table>
   <script>
-    fetch("/api/tickets").then(r => r.json()).then(({items: rows}) => {
+    fetch("/api/tickets").then(r => r.json()).then(rows => {
       const body = document.querySelector("#tickets tbody");
       body.innerHTML = rows.map(t => `<tr>
         <td>${t.ticket_id}</td><td>${t.customer_id}</td><td>${t.subject}</td>
         <td>${t.category}</td><td class="${t.urgency}">${t.urgency}</td><td>${t.status}</td>
+        <td>${t.priority_score.toFixed(2)}</td>
       </tr>`).join("");
     });
   </script>

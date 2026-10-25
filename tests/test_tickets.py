@@ -51,6 +51,11 @@ assert list_tickets("") == [t for t in tickets if t["status"] == ""]
 assert list_tickets() == tickets
 
 with app.test_client() as client:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.mimetype == "text/html"
+    assert "<th>Priority score (beta)</th>" in response.get_data(as_text=True)
+
     response = client.get("/api/tickets", query_string={"status": status})
     assert response.status_code == 200
     assert_scored_records(response.get_json(), expected)
