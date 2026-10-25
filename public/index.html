@@ -30,11 +30,26 @@
     let selectedCustomer = null;
 
     function renderTickets(rows) {
-      body.innerHTML = rows.map(t => `<tr>
-        <td>${t.ticket_id}</td><td><button type="button" data-customer-id="${t.customer_id}">${t.customer_id}</button></td><td>${t.subject}</td>
-        <td>${t.category}</td><td class="${t.urgency}">${t.urgency}</td><td>${t.status}</td>
-        <td>${t.priority_score.toFixed(2)}</td>
-      </tr>`).join("");
+      body.replaceChildren(...rows.map(t => {
+        const row = document.createElement("tr");
+        const values = [t.ticket_id, t.customer_id, t.subject, t.category,
+                        t.urgency, t.status, t.priority_score.toFixed(2)];
+        values.forEach((value, index) => {
+          const cell = document.createElement("td");
+          if (index === 1) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.dataset.customerId = t.customer_id;
+            button.textContent = value;
+            cell.append(button);
+          } else {
+            cell.textContent = value;
+          }
+          if (index === 4) cell.className = t.urgency;
+          row.append(cell);
+        });
+        return row;
+      }));
     }
 
     body.addEventListener("click", event => {
