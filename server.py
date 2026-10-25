@@ -51,13 +51,9 @@ def api_ticket(ticket_id):
 
 @app.route("/api/customers/<customer_id>")
 def api_customer(customer_id):
-    # SEEDED BUG (lesson 15.3): get_customer() returns None for CUST-0007,
-    # and this handler does not check for that before reading ["name"] off
-    # the result. That raises a real TypeError, which Flask turns into a
-    # 500 -- exactly the blank-screen behavior TICKET-0008 describes. The
-    # fix is a None check + a proper 404, not a bare try/except that
-    # swallows the error silently.
     customer = get_customer(customer_id)
+    if customer is None:
+        return jsonify({"error": "customer not found", "customer_id": customer_id}), 404
     return jsonify({"name": customer["name"], "segment": customer["segment"]})
 
 

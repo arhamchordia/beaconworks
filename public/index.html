@@ -14,17 +14,64 @@
 <body>
   <h1>BeaconWorks Ticket Dashboard</h1>
   <p>Priority scores are a beta prioritization aid, based on urgency, customer segment, and ticket age.</p>
+  <section id="account" hidden>
+    <h2>Customer account</h2>
+    <p id="customer-details" role="status"></p>
+    <button id="all-tickets" type="button">Show all tickets</button>
+  </section>
   <table id="tickets"><thead>
     <tr><th>Ticket</th><th>Customer</th><th>Subject</th><th>Category</th><th>Urgency</th><th>Status</th><th>Priority score (beta)</th></tr>
   </thead><tbody></tbody></table>
   <script>
-    fetch("/api/tickets").then(r => r.json()).then(rows => {
-      const body = document.querySelector("#tickets tbody");
+    const body = document.querySelector("#tickets tbody");
+    const account = document.querySelector("#account");
+    const details = document.querySelector("#customer-details");
+    let tickets = [];
+    let selectedCustomer = null;
+
+    function renderTickets(rows) {
       body.innerHTML = rows.map(t => `<tr>
-        <td>${t.ticket_id}</td><td>${t.customer_id}</td><td>${t.subject}</td>
+        <td>${t.ticket_id}</td><td><button type="button" data-customer-id="${t.customer_id}">${t.customer_id}</button></td><td>${t.subject}</td>
         <td>${t.category}</td><td class="${t.urgency}">${t.urgency}</td><td>${t.status}</td>
         <td>${t.priority_score.toFixed(2)}</td>
       </tr>`).join("");
+    }
+
+    body.addEventListener("click", event => {
+      const button = event.target.closest("button[data-customer-id]");
+      if (!button) return;
+      const customerId = button.dataset.customerId;
+      selectedCustomer = customerId;
+      account.hidden = false;
+      details.textContent = `Loading customer ${customerId}…`;
+      renderTickets(tickets.filter(t => t.customer_id === customerId));
+      fetch(`/api/customers/${encodeURIComponent(customerId)}`).then(async response => {
+        if (selectedCustomer !== customerId) return;
+        if (response.status === 404) {
+          details.textContent = `Customer record not found for ${customerId}`;
+          return;
+        }
+        if (!response.ok) throw new Error("Customer request failed");
+        const customer = await response.json();
+        if (selectedCustomer === customerId) {
+          details.textContent = `${customerId}: ${customer.name} (${customer.segment})`;
+        }
+      }).catch(() => {
+        if (selectedCustomer === customerId) {
+          details.textContent = `Unable to load customer ${customerId}`;
+        }
+      });
+    });
+
+    document.querySelector("#all-tickets").addEventListener("click", () => {
+      selectedCustomer = null;
+      account.hidden = true;
+      renderTickets(tickets);
+    });
+
+    fetch("/api/tickets").then(r => r.json()).then(rows => {
+      tickets = rows;
+      renderTickets(tickets);
     });
   </script>
 </body>
