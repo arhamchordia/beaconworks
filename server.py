@@ -5,7 +5,7 @@ import os
 from src.lib.customers import get_customer, list_customers
 from src.lib.tickets import (
     get_ticket, tickets_for_customer, summarize_tickets, parse_ticket_query,
-    filter_tickets, query_tickets,
+    filter_tickets, query_tickets, enrich_ticket, enrich_tickets,
 )
 
 app = Flask(__name__, static_folder="public", static_url_path="")
@@ -22,7 +22,7 @@ def api_tickets():
         tickets, total = query_tickets(parse_ticket_query(request.args))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
-    response = jsonify(tickets)
+    response = jsonify(enrich_tickets(tickets))
     response.headers["X-Total-Count"] = str(total)
     return response
 
@@ -46,7 +46,7 @@ def api_ticket(ticket_id):
     ticket = get_ticket(ticket_id)
     if ticket is None:
         return jsonify({"error": "ticket not found"}), 404
-    return jsonify(ticket)
+    return jsonify(enrich_ticket(ticket))
 
 
 @app.route("/api/customers/<customer_id>")
@@ -63,7 +63,7 @@ def api_customer(customer_id):
 
 @app.route("/api/customers/<customer_id>/tickets")
 def api_customer_tickets(customer_id):
-    return jsonify(tickets_for_customer(customer_id))
+    return jsonify(enrich_tickets(tickets_for_customer(customer_id)))
 
 
 if __name__ == "__main__":

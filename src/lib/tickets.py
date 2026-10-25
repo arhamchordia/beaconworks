@@ -2,10 +2,28 @@
 import json
 import os
 import re
+from datetime import datetime, timezone
+
+from src.lib.customers import get_customer
+from src.lib.priority import compute_score
 
 _FIXTURES = os.path.join(os.path.dirname(__file__), "..", "fixtures", "tickets.json")
 with open(_FIXTURES) as f:
     TICKETS = json.load(f)
+
+
+def enrich_ticket(ticket, now=None):
+    """Return a scored copy, using zero segment weight for a missing customer."""
+    now = now or datetime.now(timezone.utc)
+    customer = get_customer(ticket["customer_id"])
+    segment = customer["segment"] if customer is not None else None
+    return dict(ticket, priority_score=compute_score(ticket, segment, now))
+
+
+def enrich_tickets(tickets, now=None):
+    """Return scored copies in source order, sharing one UTC timestamp."""
+    now = now or datetime.now(timezone.utc)
+    return [enrich_ticket(ticket, now) for ticket in tickets]
 
 
 def list_tickets(status=None, urgency=None, customer_id=None):

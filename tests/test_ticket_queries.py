@@ -2,6 +2,7 @@ import sys
 import os
 from collections import Counter
 from copy import deepcopy
+from datetime import datetime, timezone
 from itertools import combinations
 from unittest.mock import patch
 
@@ -17,10 +18,20 @@ def expected_summary(tickets):
 
 
 def check_list(client, query, expected, total):
-    response = client.get("/api/tickets", query_string=query)
+    with patch("src.lib.tickets.datetime") as clock:
+        clock.now.return_value = datetime(2026, 10, 25, tzinfo=timezone.utc)
+        response = client.get("/api/tickets", query_string=query)
     assert response.status_code == 200, query
     assert response.mimetype == "application/json"
-    assert response.get_json() == expected, query
+    actual = response.get_json()
+    assert [{key: value for key, value in ticket.items() if key != "priority_score"}
+            for ticket in actual] == [
+                {key: value for key, value in ticket.items() if key != "priority_score"}
+                for ticket in expected
+            ], query
+    for ticket in actual:
+        assert type(ticket["priority_score"]) in (int, float), query
+        assert 0 <= ticket["priority_score"] <= 100, query
     assert response.headers["X-Total-Count"] == str(total), query
 
 
