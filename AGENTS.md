@@ -25,6 +25,8 @@ Ticket queries support status, urgency, customer_id, sort=id, order=asc|desc, li
   If the data looks wrong, tell the user and ask how to proceed.
 - Keep routes in `server.py` thin; call functions in `src/lib/`.
 - Every route should have a test. Tests use plain `assert` and print `OK`.
+- Scoring tests use a fixed date, never today.
+- Change the priority formula and weights only with a product decision.
 - Keep changes focused; do not rename or reformat unrelated code.
 
 ## Verification
@@ -33,8 +35,4 @@ Before saying a change is done, run the full Test command above and show
 the results. Show the Git diff and state which files changed. Check new
 routes with the Flask test client and, when relevant, the running server.
 
-## Known open items
-
-- The customer route errors for customers missing from the fixtures,
-  for example `CUST-0007`. Do not fix this as part of unrelated work.
-- `compute_score` in `src/lib/priority.py` is defined but not used by the server yet.
+If a test fails, try a fix at most twice, then stop and report.
