@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from src.lib.priority import compute_score
+from src.lib.priority import compute_score, days_open
 from src.lib.customers import get_customer
 
 # Expected scores are copied from the approved plan, independently of the helper.
@@ -49,6 +49,15 @@ assert customer is None, "CUST-0007 must remain absent from customer data"
 actual = compute_score(missing_customer_ticket, None, now)
 assert actual == 55.00, f"missing customer: expected 55.00, got {actual}"
 case_count += 1
-assert case_count == 37
+
+future_ticket = {
+    "urgency": "high",
+    "created_date": (now + timedelta(days=7)).isoformat(),
+}
+assert days_open(future_ticket["created_date"], now) == 0, "future dates must clamp to zero days"
+actual = compute_score(future_ticket, "Enterprise", now)
+assert actual == 70.00, f"future date: expected 70.00, got {actual}"
+case_count += 1
+assert case_count == 38
 
 print(f"test_priority.py: OK ({case_count} cases)")
