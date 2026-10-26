@@ -9,6 +9,6 @@
 | 5. If a test fails, try a fix at most twice, then stop and report. | AGENTS.md | done |
 | 6. Before a pull request: check behavior and tests, save the evidence, run /review against the base branch, triage the findings, and write a description with risks. | Repository skill | done: .agents/skills/feature-review |
 | 7. Debug loop: see it fail, write a failing test first, make the smallest fix, see it pass, read the diff. | Repository skill | planned: repository skill |
-| 8. Write every command you run into an audit log. | Hook | planned: hook |
+| 8. Write every command you run into an audit log. | Hook | done: .codex/hooks.json (PostToolUse, shell commands only) |
 | 9. Look up a customer's open issues in the team's issue tracker. | MCP | planned: MCP |
 | 10. Label the score column "Priority score (beta)". | Only the prompt | no rule needed, done in code |
