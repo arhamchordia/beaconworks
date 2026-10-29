@@ -41,7 +41,8 @@ Other customer request failures show `Unable to load customer <the id>`.
 
 `GET /api/tickets` returns a JSON array of ticket objects, with their existing
 fields and a computed numeric `priority_score`. There is no `items` wrapper.
-Filtering happens first, optional ID sorting second, and pagination last.
+Filtering happens first, optional sorting second, and pagination last.
+Use `sort=priority_score` to sort by returned scores (ascending by default, or `order=desc`), together with filters, `limit`, and `offset`.
 
 Every successful list response includes `X-Total-Count`, the number of matching
 tickets before pagination. No matches return `[]` with `X-Total-Count: 0`.
@@ -55,8 +56,8 @@ Supported query parameters are all optional:
 | `status` | Exact, case-sensitive match against the ticket's status | All statuses |
 | `urgency` | Exact, case-sensitive match against the ticket's urgency | All urgencies |
 | `customer_id` | Exact, case-sensitive match against the ticket's customer ID | All customers |
-| `sort` | Only `id`, sorting lexicographically by `ticket_id` | Preserve fixture order |
-| `order` | `asc` or `desc`; affects ordering only when `sort=id` is supplied | `asc` |
+| `sort` | `id` (lexicographic `ticket_id`) or `priority_score` (numeric score) | Preserve fixture order |
+| `order` | `asc` or `desc`; affects ordering when `sort` is supplied | `asc` |
 | `limit` | Non-negative integer; `0` returns no records | No limit |
 | `offset` | Non-negative integer; number of matching records to skip after sorting | `0` |
 
@@ -64,13 +65,13 @@ Filters combine with AND. Filter values are not validated as enums or ID formats
 unknown values and empty strings are literal matches, usually yielding no results.
 Unknown query parameters are ignored. If a parameter is repeated, its first value
 is used. Category, text search, date filters, `sort_by`, `page`, and `per_page` are
-not supported. Priority scores cannot be used as a sort field.
+not supported.
 
 Invalid `sort` or `order` values, or invalid `limit` or `offset` values, return
 HTTP 400 with a JSON object containing only `error`, for example:
 
 ```json
-{"error": "sort must be id"}
+{"error": "sort must be id or priority_score"}
 ```
 
 `limit` and `offset` accept ASCII digits only, including leading zeros. Signs,

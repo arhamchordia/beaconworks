@@ -22,7 +22,7 @@ def api_tickets():
         tickets, total = query_tickets(parse_ticket_query(request.args))
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
-    response = jsonify(enrich_tickets(tickets))
+    response = jsonify(tickets)
     response.headers["X-Total-Count"] = str(total)
     return response
 
