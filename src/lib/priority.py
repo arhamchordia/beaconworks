@@ -11,7 +11,7 @@ compute_score() back to a TODO and rebuild it on camera.
 """
 from datetime import datetime, timezone
 
-URGENCY_WEIGHT = {"high": 1.0, "medium": 0.6, "low": 0.3}
+URGENCY_WEIGHT = {"high": 0.9, "medium": 0.6, "low": 0.3}
 SEGMENT_WEIGHT = {"Enterprise": 1.0, "Mid-Market": 0.6, "SMB": 0.4}
 
 
