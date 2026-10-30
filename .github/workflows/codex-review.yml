@@ -6,7 +6,7 @@ on:
 
 jobs:
   codex-review:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # codex-action drop-sudo fails on ubuntu-26.04 (openai/codex-action#188)
     permissions:
       contents: read
     steps:
@@ -42,7 +42,8 @@ jobs:
           prompt-file: ci/review_prompt_pr.md
           sandbox: read-only
           output-file: ci-out/review.json
-          codex-args: '["--ephemeral", "--output-schema", "ci/review_schema.json"]'
+          output-schema-file: ci/review_schema.json
+          codex-args: '["--ephemeral"]'
 
       - name: Gate
         env:
