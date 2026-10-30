@@ -190,3 +190,5 @@ checks for `None`; missing customers are not added to the data.
 response, and that `CUST-0007` tickets remain available.
 
 `GET /api/health` returns `{"status": "ok"}`.
+
+Run the review gate before opening a pull request: bash ci/review_gate.sh
