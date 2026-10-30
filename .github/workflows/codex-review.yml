@@ -1,0 +1,69 @@
+name: Codex review gate
+
+on:
+  pull_request:
+    branches: [course-main]
+
+jobs:
+  codex-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the six tests
+        id: tests
+        continue-on-error: true
+        run: |
+          fail=0
+          for t in tests/test_priority.py tests/test_customers.py tests/test_tickets.py tests/test_health.py tests/test_summary.py tests/test_ticket_queries.py; do
+            python3 "$t" || fail=1
+          done
+          exit $fail
+
+      - name: Prepare output folder
+        run: mkdir -p ci-out
+
+      - name: Codex review (read only)
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ci/review_prompt_pr.md
+          sandbox: read-only
+          output-file: ci-out/review.json
+          codex-args: '["--ephemeral", "--output-schema", "ci/review_schema.json"]'
+
+      - name: Gate
+        env:
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          r = json.load(open("ci-out/review.json"))
+          tests_ok = os.environ["TESTS_OUTCOME"] == "success"
+          ok = tests_ok and r["verdict"] == "pass"
+          lines = [
+              f"**Gate: {'PASS' if ok else 'FAIL'}**",
+              "",
+              f"- Tests: {'passed' if tests_ok else 'FAILED'}",
+              f"- Codex verdict: {r['verdict']}",
+              f"- Summary: {r['summary']}",
+          ]
+          lines += [f"- [{f['severity']}] {f['file']}: {f['message']}" for f in r["findings"]]
+          text = "\n".join(lines)
+          print(text)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
+              s.write(text + "\n")
+          sys.exit(0 if ok else 1)
+          PY
