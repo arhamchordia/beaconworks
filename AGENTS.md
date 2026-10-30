@@ -28,6 +28,8 @@ Ticket queries support status, urgency, customer_id, sort=id, order=asc|desc, li
 - Scoring tests use a fixed date, never today.
 - Change the priority formula and weights only with a product decision.
 - Keep changes focused; do not rename or reformat unrelated code.
+- Never open, print or copy .env files. Use .env.example to see which variables exist.
+- Never open, print or copy .env files. Use .env.example to see which variables exist.
 
 ## Verification
 
