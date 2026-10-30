@@ -1,0 +1,86 @@
+name: Codex review gate
+
+on:
+  pull_request:
+    branches: [course-main]
+
+jobs:
+  codex-review:
+    # codex-action drop-sudo fails on ubuntu-26.04 (openai/codex-action#188)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run the six tests
+        id: tests
+        continue-on-error: true
+        run: |
+          fail=0
+          for t in tests/test_priority.py tests/test_customers.py tests/test_tickets.py tests/test_health.py tests/test_summary.py tests/test_ticket_queries.py; do
+            python3 "$t" || fail=1
+          done
+          exit $fail
+
+      - name: Check the OpenAI API key
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::The OPENAI_API_KEY secret is missing or empty."
+            exit 1
+          fi
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY")
+          echo "OpenAI API key check: HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::The OpenAI API key was rejected with HTTP $code. 401: wrong or expired key. 403: the key lacks permissions."
+            exit 1
+          fi
+
+      - name: Prepare output folder
+        run: mkdir -p ci-out
+
+      - name: Codex review (read only)
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ci/review_prompt_pr.md
+          sandbox: read-only
+          output-file: ci-out/review.json
+          output-schema-file: ci/review_schema.json
+          codex-args: '["--ephemeral"]'
+
+      - name: Gate
+        env:
+          TESTS_OUTCOME: ${{ steps.tests.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os, sys
+          r = json.load(open("ci-out/review.json"))
+          tests_ok = os.environ["TESTS_OUTCOME"] == "success"
+          ok = tests_ok and r["verdict"] == "pass"
+          lines = [
+              f"**Gate: {'PASS' if ok else 'FAIL'}**",
+              "",
+              f"- Tests: {'passed' if tests_ok else 'FAILED'}",
+              f"- Codex verdict: {r['verdict']}",
+              f"- Summary: {r['summary']}",
+          ]
+          lines += [f"- [{f['severity']}] {f['file']}: {f['message']}" for f in r["findings"]]
+          text = "\n".join(lines)
+          print(text)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
+              s.write(text + "\n")
+          sys.exit(0 if ok else 1)
+          PY
