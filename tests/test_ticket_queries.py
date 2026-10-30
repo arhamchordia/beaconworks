@@ -66,6 +66,30 @@ with app.test_client() as client:
     check_list(client, {"sort": "id"}, ascending, len(tickets))
     check_list(client, {"sort": "id", "order": "asc"}, ascending, len(tickets))
     check_list(client, {"sort": "id", "order": "desc"}, ascending[::-1], len(tickets))
+    with patch("src.lib.tickets.datetime") as clock:
+        clock.now.return_value = datetime(2026, 10, 25, tzinfo=timezone.utc)
+        for score_filters in ({}, {"urgency": "high"}, filters):
+            baseline = client.get("/api/tickets", query_string=score_filters).get_json()
+            assert baseline
+            for order in (None, "asc", "desc"):
+                query = dict(score_filters, sort="priority_score")
+                if order is not None:
+                    query["order"] = order
+                response = client.get("/api/tickets", query_string=query)
+                assert response.status_code == 200, query
+                actual = response.get_json()
+                scores = [t["priority_score"] for t in actual]
+                assert scores == sorted(scores, reverse=order == "desc"), query
+                expected = sorted(baseline, key=lambda t: t["priority_score"],
+                                  reverse=order == "desc")
+                assert actual == expected, query
+                assert response.headers["X-Total-Count"] == str(len(baseline)), query
+                for offset, limit in ((0, 5), (2, 5), (0, 0), (len(baseline), 5)):
+                    page_query = dict(query, offset=offset, limit=limit)
+                    page = client.get("/api/tickets", query_string=page_query)
+                    assert page.status_code == 200, page_query
+                    assert page.get_json() == expected[offset:offset + limit], page_query
+                    assert page.headers["X-Total-Count"] == str(len(baseline)), page_query
     for query, expected in (
         ({"limit": 2}, tickets[:2]),
         ({"offset": 2}, tickets[2:]),
@@ -78,7 +102,7 @@ with app.test_client() as client:
     ):
         check_list(client, query, expected, len(tickets))
 
-    invalid_queries = [{"sort": value} for value in ("ticket_id", "urgency", "", "ID")]
+    invalid_queries = [{"sort": value} for value in ("ticket_id", "urgency", "", "ID", "bogus")]
     invalid_queries += [{"order": value} for value in ("up", "ASC", "", "descending")]
     for key in ("limit", "offset"):
         invalid_queries += [{key: value} for value in

@@ -39,8 +39,8 @@ def parse_ticket_query(args):
     query = {key: args[key] for key in ("status", "urgency", "customer_id") if key in args}
     query["sort"] = args.get("sort")
     query["order"] = args.get("order", "asc")
-    if query["sort"] is not None and query["sort"] != "id":
-        raise ValueError("sort must be id")
+    if query["sort"] is not None and query["sort"] not in {"id", "priority_score"}:
+        raise ValueError("sort must be id or priority_score")
     if query["order"] not in {"asc", "desc"}:
         raise ValueError("order must be asc or desc")
     for key, default in (("limit", None), ("offset", 0)):
@@ -64,10 +64,12 @@ def filter_tickets(query):
 
 
 def query_tickets(query):
-    """Filter, optionally sort by ID, then paginate and return the total."""
-    tickets = filter_tickets(query)
+    """Filter and score, optionally sort, then paginate and return the total."""
+    tickets = enrich_tickets(filter_tickets(query))
     if query["sort"] == "id":
         tickets.sort(key=lambda ticket: ticket["ticket_id"], reverse=query["order"] == "desc")
+    elif query["sort"] == "priority_score":
+        tickets.sort(key=lambda ticket: ticket["priority_score"], reverse=query["order"] == "desc")
     total = len(tickets)
     start = query["offset"]
     end = None if query["limit"] is None else start + query["limit"]
