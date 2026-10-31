@@ -7,25 +7,32 @@ Run:
 Without --search, all four tool definitions go with every request.
 With --search, the tools wait in two namespaces (customers, tickets) and the
 API loads only the ones the model searches for (hosted tool search).
+
+Recovery: the app retries an "unavailable" tool once, refuses a call that
+already failed, and the model answers with what it has. See tools.py for
+every error code and who recovers from it.
 """
 import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI, OpenAIError
 
 from reliability import classify, make_client
-from tools import dispatch, tool_list
+from tools import dispatch, error, tool_list
 
 MODEL = os.environ.get("BW_MODEL", "gpt-6-luna")
 MAX_ROUNDS = 5
+TOOL_RETRY_WAIT_SECONDS = 1
 
 INSTRUCTIONS = (
     "You answer questions about BeaconWorks customers and support tickets in at most three sentences. "
-    "Use the tools for every fact. Never guess. If a tool returns an error, say what the error means."
+    "Use the tools for every fact. Never guess. If a tool returns an error, follow what its message says. "
+    "If some data is missing, still answer with what you found and say clearly what is missing."
 )
 
 
@@ -45,9 +52,35 @@ def loaded_names(output_item) -> str:
     return ", ".join(names)
 
 
+def call_key(name: str, arguments: str) -> str:
+    """The same call with the same arguments, however the JSON is spaced."""
+    try:
+        return name + json.dumps(json.loads(arguments), sort_keys=True)
+    except json.JSONDecodeError:
+        return name + arguments
+
+
+def run_tool(name: str, arguments: str, failed: dict, step: int) -> tuple[dict, int]:
+    key = call_key(name, arguments)
+    if key in failed:
+        return error("repeated_call", f"This exact call already failed with {failed[key]}. "
+                                      "Do not repeat it. Answer with what you have."), step
+    result = dispatch(name, arguments)
+    if not result["ok"] and result["error"]["code"] == "unavailable":
+        # Retry in one place: the app, once. The model is never asked to retry.
+        print(f"[{step}] app got unavailable, retrying once in {TOOL_RETRY_WAIT_SECONDS}s")
+        step += 1
+        time.sleep(TOOL_RETRY_WAIT_SECONDS)
+        result = dispatch(name, arguments)
+    if not result["ok"]:
+        failed[key] = result["error"]["code"]
+    return result, step
+
+
 def run(client: OpenAI, question: str, search: bool) -> int:
     tools = tool_list(search)
     items = [{"role": "user", "content": question}]
+    failed: dict[str, str] = {}
     total_input = 0
     step = 1
     for round_number in range(1, MAX_ROUNDS + 1):
@@ -72,7 +105,7 @@ def run(client: OpenAI, question: str, search: bool) -> int:
         for call in calls:
             print(f"[{step}] model asks: {call.name}({call.arguments})")
             step += 1
-            result = dispatch(call.name, call.arguments)
+            result, step = run_tool(call.name, call.arguments, failed, step)
             print(f"[{step}] app ran it: {json.dumps(result)}")
             step += 1
             items.append({"type": "function_call_output", "call_id": call.call_id, "output": json.dumps(result)})
@@ -91,8 +124,8 @@ def main() -> int:
     args = parser.parse_args()
     try:
         return run(make_client(), args.question, args.search)
-    except OpenAIError as error:
-        print(f"request failed: {classify(error).line()}")
+    except OpenAIError as problem:
+        print(f"request failed: {classify(problem).line()}")
         return 1
 
 

@@ -4,14 +4,29 @@ Every tool is read-only and returns JSON in one of two shapes:
   {"ok": true, ...}                                     the data
   {"ok": false, "error": {"code": "...", "message": "..."}}  what went wrong
 
-Error codes: invalid_arguments, not_found, too_broad, not_available.
+Error codes, and who recovers:
+  invalid_arguments  the model fixes its arguments and calls again
+  too_broad          the model adds a filter and calls again
+  not_found          nobody retries: the record does not exist, say so, never guess
+  not_available      nobody retries: this data is off limits, never work around it
+  unavailable        the app retries once, then the model answers with what it has
+  internal_error     nobody retries: a bug, the details go to the log, not to the model
+  repeated_call      the app refuses a call that already failed, so the model cannot loop
+
+Every error message ends with what to do next, because the model reads it.
 
 Test every tool without calling any model:
   python3 analyst/tools.py
+Practice failures (never set these in real use):
+  BW_TOOL_FAULT=flaky   customer data fails once, then works
+  BW_TOOL_FAULT=down    customer data always fails
+  BW_TOOL_FAULT=crash   customer tools hit a bug
 """
 import copy
 import json
+import os
 import sys
+import traceback
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -29,6 +44,27 @@ STATUSES = ["open", "closed"]
 URGENCIES = ["high", "medium", "low"]
 CUSTOMER_ID = "^CUST-[0-9]{4}$"
 TICKET_ID = "^TICKET-[0-9]{4}$"
+ERROR_LOG = Path(__file__).resolve().parent / "out" / "tool_errors.log"
+
+
+class SourceUnavailable(Exception):
+    """The data source did not answer. Temporary, worth one retry."""
+
+
+_fault_calls = {"count": 0}
+
+
+def customer_source() -> None:
+    """Stands in for the customer database connection. BW_TOOL_FAULT simulates its failures."""
+    fault = os.environ.get("BW_TOOL_FAULT", "")
+    if fault == "down":
+        raise SourceUnavailable("customer database did not answer")
+    if fault == "flaky":
+        _fault_calls["count"] += 1
+        if _fault_calls["count"] == 1:
+            raise SourceUnavailable("customer database did not answer")
+    if fault == "crash":
+        raise KeyError("segment_v2")  # a bug, like a renamed column
 
 
 # ---------- Inputs: the schema the model sees, and the same rules checked in our code ----------
@@ -146,16 +182,19 @@ def error(code: str, message: str) -> dict:
 
 
 def run_get_customer(args: GetCustomerArgs) -> dict:
+    customer_source()
     record = get_customer(args.customer_id)
     if record is None:
-        return error("not_found", f"No customer {args.customer_id}.")
+        return error("not_found", f"No customer {args.customer_id} in the customer records. "
+                                  "Do not guess its details. Say that the record is missing.")
     keep = ("customer_id", "name", "segment", "region", "signup_date", "account_owner")  # no contact email
     return {"ok": True, "customer": {key: record[key] for key in keep}}
 
 
 def run_find_customers(args: FindCustomersArgs) -> dict:
     if args.name_contains is None and args.segment is None and args.region is None:
-        return error("too_broad", "Give at least one of name_contains, segment or region.")
+        return error("too_broad", "Give at least one of name_contains, segment or region, then call again.")
+    customer_source()
     matches = [
         {key: c[key] for key in ("customer_id", "name", "segment", "region")}
         for c in list_customers()
@@ -168,17 +207,18 @@ def run_find_customers(args: FindCustomersArgs) -> dict:
 
 def run_get_ticket(args: GetTicketArgs) -> dict:
     if args.ticket_id in SKIP_TICKETS:
-        return error("not_available", f"{args.ticket_id} is not available to this assistant.")
+        return error("not_available", f"{args.ticket_id} is not available to this assistant. "
+                                      "Do not try to reach it another way.")
     ticket = get_ticket(args.ticket_id)
     if ticket is None:
-        return error("not_found", f"No ticket {args.ticket_id}.")
+        return error("not_found", f"No ticket {args.ticket_id}. Do not guess. Say that it does not exist.")
     keep = ("ticket_id", "customer_id", "subject", "category", "urgency", "status", "created_date")  # no body
     return {"ok": True, "ticket": {key: ticket[key] for key in keep}}
 
 
 def run_list_tickets(args: ListTicketsArgs) -> dict:
     if args.customer_id is None and args.status is None and args.urgency is None:
-        return error("too_broad", "Give at least one of customer_id, status or urgency.")
+        return error("too_broad", "Give at least one of customer_id, status or urgency, then call again.")
     found = [
         t for t in list_tickets(status=args.status, urgency=args.urgency, customer_id=args.customer_id)
         if t["ticket_id"] not in SKIP_TICKETS
@@ -199,19 +239,30 @@ RUNNERS = {
 def dispatch(name: str, arguments: str) -> dict:
     """Check the model's arguments, then run the tool. Never raises."""
     if name not in RUNNERS:
-        return error("not_found", f"No tool named {name}.")
+        return error("not_found", f"No tool named {name}. Use only the tools you were given.")
     try:
         args = ARGS[name].model_validate_json(arguments)
     except ValidationError as problem:
         first = problem.errors()[0]
         field = ".".join(str(part) for part in first["loc"]) or "arguments"
-        return error("invalid_arguments", f"{field}: {first['msg']}")
-    return RUNNERS[name](args)
+        return error("invalid_arguments", f"{field}: {first['msg']}. Fix the arguments and call again.")
+    try:
+        return RUNNERS[name](args)
+    except SourceUnavailable:
+        return error("unavailable", "Customer data is temporarily unavailable. "
+                                    "Answer with what you have and say what is missing.")
+    except Exception:
+        # A bug. The full details go to our log. The model only learns that the tool failed.
+        ERROR_LOG.parent.mkdir(exist_ok=True)
+        with ERROR_LOG.open("a") as log:
+            log.write(f"--- {name} {arguments}\n{traceback.format_exc()}")
+        return error("internal_error", f"The {name} tool failed. Do not retry it. Say that this data could not be loaded.")
 
 
 # ---------- Self test: run with  python3 analyst/tools.py ----------
 
 def self_test() -> int:
+    os.environ.pop("BW_TOOL_FAULT", None)
     checks = []
 
     def check(label, ok):
@@ -250,6 +301,22 @@ def self_test() -> int:
     check("list_tickets limit 50 returns invalid_arguments",
           run("list_tickets", customer_id=None, status="open", urgency=None, limit=50)["error"]["code"] == "invalid_arguments")
     check("unknown tool returns not_found", dispatch("delete_customer", "{}")["error"]["code"] == "not_found")
+    out = run("get_customer", customer_id="CUST-0007")
+    check("not_found for CUST-0007 tells the model not to guess", "Do not guess" in out["error"]["message"])
+    for fault, code in (("down", "unavailable"), ("crash", "internal_error")):
+        os.environ["BW_TOOL_FAULT"] = fault
+        out = run("get_customer", customer_id="CUST-0002")
+        check(f"BW_TOOL_FAULT={fault} returns {code}", out["error"]["code"] == code)
+    check("internal_error hides the bug from the model", "segment_v2" not in out["error"]["message"])
+    check("internal_error writes the details to the log", "KeyError: 'segment_v2'" in ERROR_LOG.read_text())
+    os.environ["BW_TOOL_FAULT"] = "flaky"
+    _fault_calls["count"] = 0
+    first, second = run("get_customer", customer_id="CUST-0002"), run("get_customer", customer_id="CUST-0002")
+    check("BW_TOOL_FAULT=flaky fails once, then works", not first["ok"] and second["ok"])
+    os.environ["BW_TOOL_FAULT"] = "down"
+    check("ticket tools keep working when customer data is down",
+          run("get_ticket", ticket_id="TICKET-0029")["ok"])
+    del os.environ["BW_TOOL_FAULT"]
     print(f"{sum(checks)} of {len(checks)} checks passed")
     return 0 if all(checks) else 1
 
