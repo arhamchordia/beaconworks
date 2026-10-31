@@ -4,3 +4,4 @@ __pycache__/
 ci-out/
 .env
 .env
+analyst/out/
