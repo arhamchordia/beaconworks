@@ -6,6 +6,10 @@ checks the meaning: the customer ID must match the ticket's own record.
 Usage:
   python3 analyst/triage.py TICKET-0001   one ticket, printed as JSON
   python3 analyst/triage.py --all         all tickets except TICKET-0023, compared with the labels
+
+Failures are sorted by analyst/reliability.py. In --all, one bad ticket never
+stops the batch, but a "stop_all" failure (key, permission, billing) or three
+failures in a row does. Every failure is written to analyst/out/triage_failures.jsonl.
 """
 import json
 import os
@@ -14,13 +18,18 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from pydantic import BaseModel, Field, ValidationError
+
+from reliability import classify, make_client
 
 MODEL = os.environ.get("BW_MODEL", "gpt-6-luna")
 ROOT = Path(__file__).resolve().parents[1]
 TICKETS_FILE = ROOT / "src" / "fixtures" / "tickets.json"
 RESULTS_FILE = Path(__file__).resolve().parent / "out" / "triage_results.jsonl"
+FAILURES_FILE = Path(__file__).resolve().parent / "out" / "triage_failures.jsonl"
+MAX_OUTPUT_TOKENS = int(os.environ.get("BW_MAX_OUTPUT_TOKENS", "2000"))
+MAX_FAILURES_IN_A_ROW = 3
 SKIP = {"TICKET-0023"}  # reserved for the security section of the course
 
 INSTRUCTIONS = (
@@ -58,7 +67,7 @@ def triage(client: OpenAI, ticket: dict) -> TicketTriage:
             instructions=INSTRUCTIONS,
             input=f"Subject: {ticket['subject']}\n\n{ticket['body']}",
             text_format=TicketTriage,
-            max_output_tokens=2000,
+            max_output_tokens=MAX_OUTPUT_TOKENS,
         )
     except ValidationError as error:
         # A cut-off answer (for example at max_output_tokens) is not valid JSON.
@@ -91,8 +100,8 @@ def run_one(client: OpenAI, ticket_id: str) -> int:
         return 1
     try:
         result = triage(client, ticket)
-    except TriageError as error:
-        print(f"{ticket_id}: {error}")
+    except (TriageError, OpenAIError) as error:
+        print(f"{ticket_id}: {classify(error).line()}")
         return 1
     print(result.model_dump_json(indent=2))
     problems = meaning_problems(ticket, result)
@@ -103,16 +112,31 @@ def run_one(client: OpenAI, ticket_id: str) -> int:
 def run_all(client: OpenAI) -> int:
     tickets = [t for t in load_tickets() if t["ticket_id"] not in SKIP]
     RESULTS_FILE.parent.mkdir(exist_ok=True)
-    same_category = same_urgency = failed_meaning = errors = 0
+    same_category = same_urgency = failed_meaning = processed = in_a_row = 0
+    failures: dict[str, int] = {}
     disagreements = []
-    with RESULTS_FILE.open("w") as out:
+    stopped = ""
+    # Write to a temporary file first, so a stopped run never replaces the last good results.
+    partial = RESULTS_FILE.with_suffix(".partial")
+    with partial.open("w") as out, FAILURES_FILE.open("w") as failed:
         for ticket in tickets:
+            processed += 1
             try:
                 result = triage(client, ticket)
-            except TriageError as error:
-                errors += 1
-                print(f"{ticket['ticket_id']}: {error}")
+            except (TriageError, OpenAIError) as error:
+                failure = classify(error)
+                failures[failure.kind] = failures.get(failure.kind, 0) + 1
+                in_a_row += 1
+                print(f"{ticket['ticket_id']}: {failure.line()}")
+                failed.write(json.dumps({"ticket_id": ticket["ticket_id"], **failure.__dict__}) + "\n")
+                if failure.kind == "stop_all":
+                    stopped = "a stop_all failure, every next call would fail too"
+                    break
+                if in_a_row >= MAX_FAILURES_IN_A_ROW:
+                    stopped = f"{MAX_FAILURES_IN_A_ROW} failures in a row"
+                    break
                 continue
+            in_a_row = 0
             problems = meaning_problems(ticket, result)
             failed_meaning += bool(problems)
             same_category += result.category == ticket["category"]
@@ -121,8 +145,16 @@ def run_all(client: OpenAI) -> int:
                 disagreements.append(f"{ticket['ticket_id']}: label {ticket['category']}, model {result.category} | {ticket['subject']}")
             out.write(json.dumps({"ticket_id": ticket["ticket_id"], **result.model_dump(), "problems": problems}) + "\n")
     n = len(tickets)
+    errors = sum(failures.values())
     print(f"tickets: {n} (skipped: {', '.join(sorted(SKIP))})")
-    print(f"errors (refused or incomplete): {errors}")
+    print(f"failures: {errors} {failures if failures else ''}".rstrip())
+    if stopped:
+        partial.unlink()
+        print(f"STOPPED after {processed} of {n}: {stopped}")
+        print(f"failures written to {FAILURES_FILE.relative_to(ROOT)}")
+        print(f"{RESULTS_FILE.relative_to(ROOT)} was not touched")
+        return 1
+    partial.replace(RESULTS_FILE)
     print(f"meaning checks failed: {failed_meaning}")
     print(f"category agrees with label: {same_category} of {n}")
     print(f"urgency agrees with label: {same_urgency} of {n}")
@@ -130,6 +162,8 @@ def run_all(client: OpenAI) -> int:
     for line in disagreements:
         print("  " + line)
     print(f"results written to {RESULTS_FILE.relative_to(ROOT)}")
+    if errors:
+        print(f"failures written to {FAILURES_FILE.relative_to(ROOT)}")
     return 0 if errors == 0 and failed_meaning == 0 else 1
 
 
@@ -141,7 +175,7 @@ def main() -> int:
     if len(sys.argv) != 2:
         print(__doc__)
         return 1
-    client = OpenAI()
+    client = make_client()
     if sys.argv[1] == "--all":
         return run_all(client)
     return run_one(client, sys.argv[1])
