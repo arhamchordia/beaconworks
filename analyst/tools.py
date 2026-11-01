@@ -1,6 +1,9 @@
-"""BeaconWorks query tools: precise inputs, one output shape, clear errors.
+"""BeaconWorks tools: precise inputs, one output shape, clear errors.
 
-Every tool is read-only and returns JSON in one of two shapes:
+Four tools only read. One, draft_reply, writes a draft and nothing more: sending
+needs a person's approval in analyst/actions.py, which the model cannot call.
+
+Every tool returns JSON in one of two shapes:
   {"ok": true, ...}                                     the data
   {"ok": false, "error": {"code": "...", "message": "..."}}  what went wrong
 
@@ -26,6 +29,7 @@ import copy
 import json
 import os
 import sys
+import tempfile
 import traceback
 from pathlib import Path
 from typing import Literal, Optional
@@ -36,6 +40,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from src.lib.customers import get_customer, list_customers  # the dashboard's own data functions
 from src.lib.tickets import get_ticket, list_tickets
+
+import actions
 
 SKIP_TICKETS = {"TICKET-0023"}  # reserved for the security section of the course
 SEGMENTS = ["SMB", "Mid-Market", "Enterprise"]
@@ -81,6 +87,11 @@ class FindCustomersArgs(BaseModel):
 
 class GetTicketArgs(BaseModel):
     ticket_id: str = Field(pattern=TICKET_ID)
+
+
+class DraftReplyArgs(BaseModel):
+    ticket_id: str = Field(pattern=TICKET_ID)
+    body: str = Field(min_length=20, max_length=1200)
 
 
 class ListTicketsArgs(BaseModel):
@@ -152,7 +163,22 @@ TICKET_TOOLS = [
     ),
 ]
 
+REPLY_TOOLS = [
+    function(
+        "draft_reply",
+        "Save a draft email reply to the customer on a ticket. This never sends anything: a person must "
+        "approve the draft first. The recipient is always the customer's primary contact on file and "
+        "cannot be chosen. Returns an action ID.",
+        {
+            "ticket_id": {"type": "string", "pattern": TICKET_ID, "description": "For example TICKET-0001."},
+            # No maxLength in strict mode, so 20 to 1200 characters is checked in our code.
+            "body": {"type": "string", "description": "The reply text only, 20 to 1200 characters, no greeting line needed."},
+        },
+    ),
+]
+
 ARGS = {
+    "draft_reply": DraftReplyArgs,
     "get_customer": GetCustomerArgs,
     "find_customers": FindCustomersArgs,
     "get_ticket": GetTicketArgs,
@@ -163,10 +189,11 @@ ARGS = {
 def tool_list(search: bool) -> list:
     """All tools sent up front, or grouped in namespaces and loaded only when tool search finds them."""
     if not search:
-        return CUSTOMER_TOOLS + TICKET_TOOLS
+        return CUSTOMER_TOOLS + TICKET_TOOLS + REPLY_TOOLS
     namespaces = [
         ("customers", "Look up and find BeaconWorks customers.", CUSTOMER_TOOLS),
         ("tickets", "Look up and list BeaconWorks support tickets.", TICKET_TOOLS),
+        ("replies", "Draft replies to customers for a person to approve.", REPLY_TOOLS),
     ]
     tools = []
     for name, description, functions in namespaces:
@@ -228,7 +255,31 @@ def run_list_tickets(args: ListTicketsArgs) -> dict:
     return {"ok": True, "total": len(found), "tickets": [{key: t[key] for key in keep} for t in found[: args.limit]]}
 
 
+def run_draft_reply(args: DraftReplyArgs) -> dict:
+    if args.ticket_id in SKIP_TICKETS:
+        return error("not_available", f"{args.ticket_id} is not available to this assistant. "
+                                      "Do not try to reach it another way.")
+    ticket = get_ticket(args.ticket_id)
+    if ticket is None:
+        return error("not_found", f"No ticket {args.ticket_id}. Do not guess. Say that it does not exist.")
+    customer_source()
+    customer = get_customer(ticket["customer_id"])
+    if customer is None:
+        return error("not_found", f"No customer record for {ticket['customer_id']}, so there is no recipient. "
+                                  "Do not draft to any other address. Say that the reply cannot be drafted.")
+    action = actions.create_draft(
+        ticket_id=args.ticket_id,
+        to=customer["primary_contact_email"],  # from our records, never from the model
+        subject=f"Re: {ticket['subject']} [{args.ticket_id}]",
+        body=args.body,
+    )
+    # The model gets the action ID, not the email address.
+    return {"ok": True, "action_id": action["action_id"], "status": "pending_approval",
+            "message": "Saved as a draft. Nothing was sent. Tell the user the action ID and that a person must approve it."}
+
+
 RUNNERS = {
+    "draft_reply": run_draft_reply,
     "get_customer": run_get_customer,
     "find_customers": run_find_customers,
     "get_ticket": run_get_ticket,
@@ -269,7 +320,7 @@ def self_test() -> int:
         checks.append(ok)
         print(("PASS " if ok else "FAIL ") + label)
 
-    for tool in CUSTOMER_TOOLS + TICKET_TOOLS:
+    for tool in CUSTOMER_TOOLS + TICKET_TOOLS + REPLY_TOOLS:
         params = tool["parameters"]
         fields = set(ARGS[tool["name"]].model_fields)
         check(f"schema {tool['name']}: strict, no extra fields, all required, matches the Pydantic model",
@@ -317,6 +368,24 @@ def self_test() -> int:
     check("ticket tools keep working when customer data is down",
           run("get_ticket", ticket_id="TICKET-0029")["ok"])
     del os.environ["BW_TOOL_FAULT"]
+
+    body = "We are looking into the customer count and will update you within two business days."
+    with tempfile.TemporaryDirectory() as tmp:
+        actions.use_folder(Path(tmp))  # self test drafts never mix with real ones
+        out = run("draft_reply", ticket_id="TICKET-0001", body=body)
+        saved = json.loads((Path(tmp) / "pending" / f"{out.get('action_id')}.json").read_text()) if out["ok"] else {}
+        check("draft_reply saves a pending draft addressed to the contact on file",
+              saved.get("to") == "contact@ballastanalytics.example.com")
+        check("draft_reply never shows the email address to the model", "@" not in json.dumps(out))
+        check("draft_reply has no approval and nothing in the outbox", not (Path(tmp) / "approvals").exists()
+              and not (Path(tmp) / "outbox").exists())
+        check("draft_reply for CUST-0007 (no record) returns not_found",
+              run("draft_reply", ticket_id="TICKET-0029", body=body)["error"]["code"] == "not_found")
+        check("draft_reply for TICKET-0023 returns not_available",
+              run("draft_reply", ticket_id="TICKET-0023", body=body)["error"]["code"] == "not_available")
+        check("draft_reply with a 5 character body returns invalid_arguments",
+              run("draft_reply", ticket_id="TICKET-0001", body="Hello")["error"]["code"] == "invalid_arguments")
+    actions.use_folder(Path(__file__).resolve().parent / "out")
     print(f"{sum(checks)} of {len(checks)} checks passed")
     return 0 if all(checks) else 1
 

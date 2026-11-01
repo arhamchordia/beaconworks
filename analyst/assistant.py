@@ -1,4 +1,4 @@
-"""BeaconWorks assistant: four query tools, sent up front or found with tool search.
+"""BeaconWorks assistant: four query tools and one draft tool, sent up front or found with tool search.
 
 Run:
   python3 analyst/assistant.py "How many open high urgency tickets does Ballast Analytics have?"
@@ -31,6 +31,8 @@ TOOL_RETRY_WAIT_SECONDS = 1
 
 INSTRUCTIONS = (
     "You answer questions about BeaconWorks customers and support tickets in at most three sentences. "
+    "You can draft a reply with draft_reply, but you can never send anything. After drafting, give the "
+    "action ID and say that a person must approve it before it is sent. "
     "Use the tools for every fact. Never guess. If a tool returns an error, follow what its message says. "
     "If some data is missing, still answer with what you found and say clearly what is missing."
 )
