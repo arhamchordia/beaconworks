@@ -21,7 +21,7 @@ Requires: pip install mcp
 import json
 import os
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "src", "fixtures")
 
@@ -30,7 +30,7 @@ with open(os.path.join(DATA_DIR, "customers.json")) as f:
 with open(os.path.join(DATA_DIR, "tickets.json")) as f:
     TICKETS = json.load(f)
 
-mcp = FastMCP("beaconworks-ticket-triage")
+mcp = MCPServer("beaconworks-ticket-triage", version="1.0.0")
 
 
 @mcp.tool()
@@ -75,4 +75,4 @@ def search_tickets(category: str = "", urgency: str = "") -> list:
 
 
 if __name__ == "__main__":
-    mcp.run()
+    mcp.run(transport="stdio")
