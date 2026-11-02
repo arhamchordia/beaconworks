@@ -1,0 +1,42 @@
+[
+  {
+    "id": "control-approver",
+    "kind": "control",
+    "question": "Who approves customer-facing emails?",
+    "expect_supported": true,
+    "expected_file": "approval_policy.md",
+    "must_include": ["Priya"],
+    "must_not_include": [],
+    "stale_files": []
+  },
+  {
+    "id": "missing-sla",
+    "kind": "missing",
+    "question": "What response time does the BeaconWorks SLA promise Enterprise customers?",
+    "expect_supported": false,
+    "expected_file": null,
+    "must_include": [],
+    "must_not_include": [],
+    "stale_files": []
+  },
+  {
+    "id": "outdated-access",
+    "kind": "outdated",
+    "question": "Who can access the ticket dashboard?",
+    "expect_supported": true,
+    "expected_file": "ticket_dashboard.md",
+    "must_include": ["internal"],
+    "must_not_include": ["Business and Enterprise"],
+    "stale_files": ["ticket_dashboard_v1.md"]
+  },
+  {
+    "id": "conflict-formula",
+    "kind": "contradictory",
+    "question": "What is the Priority Scoring formula?",
+    "expect_supported": true,
+    "expected_file": "ticket_dashboard.md",
+    "must_include": ["40", "30", "14"],
+    "must_not_include": ["50"],
+    "stale_files": ["ticket_dashboard_v2.md"]
+  }
+]
