@@ -16,6 +16,7 @@ Run these from the repository directory:
 - Start the server on port 4000: `python3 server.py`
 - Check it from another terminal: `curl -s -o /dev/null -w "%{http_code}\n" http://localhost:4000/api/tickets` should print `200`.
 - Stop the server with Ctrl+C.
+- Check the Codex MCP setup: `python3 mcp_server/check_codex_config.py` should end with `All checks passed`.
 
 Ticket queries support status, urgency, customer_id, sort=id, order=asc|desc, limit, and offset; summary accepts the same filters.
 
