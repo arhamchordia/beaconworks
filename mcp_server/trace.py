@@ -42,26 +42,29 @@ def show(direction: str, message: dict) -> None:
 
 
 class StdioClient:
-    def __init__(self):
+    def __init__(self, verbose: bool = True):
+        self.verbose = verbose  # False: send and receive the same messages, without printing them
         # The client starts the server. stderr is kept apart: the spec reserves stdout for MCP messages only.
         self.server = subprocess.Popen(SERVER_COMMAND, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE, text=True)
         self.next_id = 1
 
-    def request(self, method: str, params: dict) -> dict:
+    def request(self, method: str, params: dict, allow_error: bool = False) -> dict:
         message = {"jsonrpc": "2.0", "id": self.next_id, "method": method, "params": {**params, "_meta": META}}
         self.next_id += 1
-        show(f"client -> server   ({method})", message)
+        if self.verbose:
+            show(f"client -> server   ({method})", message)
         self.server.stdin.write(json.dumps(message) + "\n")  # one message per line, no newlines inside
         self.server.stdin.flush()
         line = self.server.stdout.readline()
         if not line:
             raise SystemExit("The server exited. Its error output:\n" + self.server.stderr.read())
         reply = json.loads(line)
-        show("server -> client", reply)
+        if self.verbose:
+            show("server -> client", reply)
         if reply.get("id") != message["id"]:
             raise SystemExit(f"Reply id {reply.get('id')} does not match request id {message['id']}.")
-        if "error" in reply:
+        if "error" in reply and not allow_error:
             raise SystemExit(f"\nThe server refused {method}: error {reply['error']['code']}, {reply['error']['message']}")
         return reply
 
