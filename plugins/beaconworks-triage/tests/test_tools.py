@@ -3,12 +3,14 @@
 Run:  python3 plugins/beaconworks-triage/tests/test_tools.py
 """
 import asyncio
+import os
 import sys
 from pathlib import Path
 
 import jsonschema
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
+os.environ["BW_CALLER"] = "support.lead"  # these tests check the tools; test_access.py checks who sees what
 
 from mcp import Client  # noqa: E402
 from triage_server import MAX_RESULTS, mcp  # noqa: E402
@@ -55,7 +57,7 @@ async def run(client: Client) -> None:
 
         # Expected failures come back as tool execution errors the model can read.
         cases = [
-            ("get_customer", {"customer_id": "CUST-0007"}, "No customer record for CUST-0007"),
+            ("get_customer", {"customer_id": "CUST-0007"}, "No customer record available for CUST-0007"),
             ("get_customer", {"customer_id": "0002"}, "pattern"),
             ("search_tickets", {"limit": 500}, "less than or equal to 20"),
             ("search_tickets", {"urgency": "urgent"}, "high"),

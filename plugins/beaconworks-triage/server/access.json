@@ -1,0 +1,9 @@
+{
+  "_about": "Who may see what, per caller. The caller is set by whoever starts the server (BW_CALLER), never by the model.",
+  "callers": {
+    "marcus.cole": {"role": "account_owner", "regions": ["EMEA"]},
+    "priya.nair": {"role": "account_owner", "regions": ["North America"]},
+    "diego.alves": {"role": "account_owner", "regions": ["APAC"]},
+    "support.lead": {"role": "lead", "regions": ["*"]}
+  }
+}
