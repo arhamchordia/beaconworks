@@ -29,8 +29,10 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-DATA_DIR = Path(os.environ.get("BW_DATA_DIR", REPO_ROOT / "src" / "fixtures"))
+# A plugin is installed as a copy, so it must not reach back into the repository: data ships inside it.
+PLUGIN_DIR = Path(__file__).resolve().parents[1]
+DATA_DIR = Path(os.environ.get("BW_DATA_DIR", PLUGIN_DIR / "data"))
+CALLER_FILE = Path.home() / ".beaconworks" / "caller"  # written by server/setup.sh, never by a tool
 TICKETS = json.loads((DATA_DIR / "tickets.json").read_text())
 CUSTOMERS = {c["customer_id"]: c for c in json.loads((DATA_DIR / "customers.json").read_text())}
 ACCESS = json.loads(Path(__file__).with_name("access.json").read_text())["callers"]
@@ -76,12 +78,16 @@ def audit(tool: str, caller: str, arguments: dict, decision: str) -> None:
 
 def current_caller(tool: str, arguments: dict) -> tuple[str, list[str]]:
     """Who is asking, from the environment the server was started with. Unknown means no access."""
-    name = os.environ.get("BW_CALLER", "")
+    # A plugin owns how its server starts, so Codex config cannot add BW_CALLER. Fall back to your caller file.
+    if "BW_CALLER" in os.environ:
+        name = os.environ["BW_CALLER"]
+    else:
+        name = CALLER_FILE.read_text().strip() if CALLER_FILE.is_file() else ""
     entry = ACCESS.get(name)
     if entry is None:
         audit(tool, name, arguments, "denied: unknown caller")
         raise ToolError("Access denied: this server was started without a known caller. "
-                        "Ask whoever configured it to set BW_CALLER. Do not retry with other arguments.")
+                        "Ask whoever configured it to set BW_CALLER or ~/.beaconworks/caller. Do not retry with other arguments.")
     return name, entry["regions"]
 
 

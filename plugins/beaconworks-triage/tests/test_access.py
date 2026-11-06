@@ -33,7 +33,7 @@ async def run(client: Client) -> None:
         return result, audit
 
     # 1. Fail closed: no caller, or a caller not in access.json, sees nothing.
-    for caller in (None, "eve.unknown"):
+    for caller in ("", "eve.unknown"):  # "" overrides any ~/.beaconworks/caller file on this machine
         r, audit = await call(caller, "search_tickets", OPEN_HIGH)
         assert r.is_error and "without a known caller" in r.content[0].text, r.content[0].text
         assert audit[-1]["decision"] == "denied: unknown caller"

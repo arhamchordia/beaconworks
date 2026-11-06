@@ -1,0 +1,20 @@
+{
+  "name": "beaconworks-local",
+  "interface": {
+    "displayName": "BeaconWorks (local)"
+  },
+  "plugins": [
+    {
+      "name": "beaconworks-triage",
+      "source": {
+        "source": "local",
+        "path": "./plugins/beaconworks-triage"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
