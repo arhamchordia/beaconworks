@@ -20,6 +20,7 @@ Run these from the repository directory:
 - Test the triage MCP server: `python3 plugins/beaconworks-triage/tests/test_tools.py` should end with `All triage server tests passed`.
 - Test its access rules: `python3 plugins/beaconworks-triage/tests/test_access.py` should end with `All access tests passed`. Change `server/access.json` only with an approved access request.
 - The triage plugin is installed as a copy. After changing anything in `plugins/beaconworks-triage/`, run both tests, bump `version` in `plugin.json`, and reinstall with `codex plugin add beaconworks-triage@beaconworks-local`. Keep `data/` in sync with `src/fixtures/`.
+- Before committing plugin changes, reinstall and run `python3 plugins/beaconworks-triage/tests/release_check.py`. It must end with `RELEASE CHECK PASSED`. Run it with `--with-model` before a release.
 
 Ticket queries support status, urgency, customer_id, sort=id, order=asc|desc, limit, and offset; summary accepts the same filters.
 

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Triage board</title>
+<style>
+  :root { --navy: #1F3A5F; --teal: #2FA88E; --coral: #D9764A; --paper: #F7F5F0; --line: #E2DED5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--paper); color: var(--navy);
+         font: 14px/1.4 Calibri, "Segoe UI", system-ui, sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .scope { color: #5B6B7F; margin-bottom: 12px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chip { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
+  .chip b { color: var(--teal); }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; background: #EFECE5; }
+  .urg { font-weight: 600; } .urg.high { color: var(--coral); } .urg.medium { color: var(--navy); } .urg.low { color: var(--teal); }
+  .note { margin-top: 10px; color: var(--coral); }
+  .empty { color: #5B6B7F; }
+</style>
+</head>
+<body>
+<h1>Triage board</h1>
+<div class="scope" id="scope">Waiting for search results...</div>
+<div class="chips" id="chips"></div>
+<table>
+  <thead><tr><th>Ticket</th><th>Subject</th><th>Category</th><th>Urgency</th><th>Customer</th><th>Created</th></tr></thead>
+  <tbody id="rows"><tr><td colspan="6" class="empty">No results yet.</td></tr></tbody>
+</table>
+<div class="note" id="note"></div>
+<script>
+// An MCP Apps view (spec 2026-01-26). It talks to its host with JSON-RPC over postMessage:
+// it sends ui/initialize, then ui/notifications/initialized, then waits for ui/notifications/tool-result.
+// Everything it shows comes from the tool's structuredContent, and is treated as untrusted:
+// ticket subjects are written by customers, so they are set with textContent, never as HTML.
+let nextId = 1;
+const pending = new Map();
+
+function send(message) { window.parent.postMessage({ jsonrpc: "2.0", ...message }, "*"); }
+function request(method, params) {
+  const id = nextId++;
+  send({ id, method, params });
+  return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+}
+
+function cell(row, text, className) {
+  const td = document.createElement("td");
+  td.textContent = text;
+  if (className) td.className = className;
+  row.appendChild(td);
+}
+
+function render(result) {
+  const data = result && result.structuredContent;
+  if (!data || !Array.isArray(data.tickets)) {
+    document.getElementById("scope").textContent = "This result has no ticket data.";
+    return;
+  }
+  const regions = data.visible_regions.join(", ").replace("*", "all regions");
+  document.getElementById("scope").textContent =
+    `${data.total_matches} matching tickets visible to this caller (${regions}). Showing ${data.returned}.`;
+
+  const counts = {};
+  for (const t of data.tickets) counts[t.category] = (counts[t.category] || 0) + 1;
+  const chips = document.getElementById("chips");
+  chips.replaceChildren();
+  for (const [category, count] of Object.entries(counts).sort((a, b) => b[1] - a[1])) {
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    const strong = document.createElement("b");
+    strong.textContent = String(count);
+    chip.append(category + " ", strong);
+    chips.appendChild(chip);
+  }
+
+  const rows = document.getElementById("rows");
+  rows.replaceChildren();
+  for (const t of data.tickets) {
+    const row = document.createElement("tr");
+    cell(row, t.ticket_id);
+    cell(row, t.subject);
+    cell(row, t.category);
+    cell(row, t.urgency, "urg " + t.urgency);
+    cell(row, t.customer_id);
+    cell(row, t.created_date);
+    rows.appendChild(row);
+  }
+  document.getElementById("note").textContent =
+    data.truncated ? "More tickets match than are shown. Narrow the filters to see the rest." : "";
+}
+
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (!message || message.jsonrpc !== "2.0") return;
+  if (message.id !== undefined && pending.has(message.id)) {
+    const { resolve, reject } = pending.get(message.id);
+    pending.delete(message.id);
+    message.error ? reject(message.error) : resolve(message.result);
+  } else if (message.method === "ui/notifications/tool-result") {
+    render(message.params);
+  }
+});
+
+request("ui/initialize", {
+  appInfo: { name: "beaconworks-triage-board", version: "0.4.0" },
+  appCapabilities: { availableDisplayModes: ["inline"] },
+  protocolVersion: "2026-01-26",
+}).then(() => send({ method: "ui/notifications/initialized", params: {} }));
+</script>
+</body>
+</html>

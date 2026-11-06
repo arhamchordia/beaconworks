@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["visible_regions", "total_matches", "by_category", "newest", "gaps"],
+  "properties": {
+    "visible_regions": {"type": "array", "items": {"type": "string"}},
+    "total_matches": {"type": "integer"},
+    "by_category": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "count"],
+        "properties": {"category": {"type": "string"}, "count": {"type": "integer"}}
+      }
+    },
+    "newest": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ticket_id", "customer", "account_owner"],
+        "properties": {
+          "ticket_id": {"type": "string"},
+          "customer": {"type": "string"},
+          "account_owner": {"type": "string"}
+        }
+      }
+    },
+    "gaps": {"type": "array", "items": {"type": "string"}}
+  }
+}
