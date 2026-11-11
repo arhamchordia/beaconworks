@@ -33,6 +33,7 @@ Ticket queries support status, urgency, customer_id, sort=id, order=asc|desc, li
 - Scoring tests use a fixed date, never today.
 - Change the priority formula and weights only with a product decision.
 - Keep changes focused; do not rename or reformat unrelated code.
+- Agents live in `agent/`. Numbers come from `agent/revenue_facts.py`, and every number an agent reports is checked in code, never by another model.
 - Never open, print or copy .env files. Use .env.example to see which variables exist.
 - Never open, print or copy .env files. Use .env.example to see which variables exist.
 
