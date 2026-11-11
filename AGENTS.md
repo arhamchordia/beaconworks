@@ -34,6 +34,7 @@ Ticket queries support status, urgency, customer_id, sort=id, order=asc|desc, li
 - Change the priority formula and weights only with a product decision.
 - Keep changes focused; do not rename or reformat unrelated code.
 - Agents live in `agent/`. Numbers come from `agent/revenue_facts.py`, and every number an agent reports is checked in code, never by another model.
+- Agent tools are read-only and return JSON. Every MCP server gets an allow-list of tools (`tool_filter`) and only the environment variables it needs.
 - Never open, print or copy .env files. Use .env.example to see which variables exist.
 - Never open, print or copy .env files. Use .env.example to see which variables exist.
 
