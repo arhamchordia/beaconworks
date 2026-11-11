@@ -36,6 +36,7 @@ Ticket queries support status, urgency, customer_id, sort=id, order=asc|desc, li
 - Agents live in `agent/`. Numbers come from `agent/revenue_facts.py`, and every number an agent reports is checked in code, never by another model.
 - Agent tools are read-only and return JSON. Every MCP server gets an allow-list of tools (`tool_filter`) and only the environment variables it needs.
 - Split work across agents only when `agent/team.py --compare` shows it helps on the owned checks. Agents pass each other JSON, never Python reprs.
+- Any agent tool that changes something needs human approval of the exact call (`needs_approval`), and guardrails are written in code first.
 - Never open, print or copy .env files. Use .env.example to see which variables exist.
 - Never open, print or copy .env files. Use .env.example to see which variables exist.
 
