@@ -38,6 +38,7 @@ Ticket queries support status, urgency, customer_id, sort=id, order=asc|desc, li
 - Split work across agents only when `agent/team.py --compare` shows it helps on the owned checks. Agents pass each other JSON, never Python reprs.
 - Any agent tool that changes something needs human approval of the exact call (`needs_approval`), and guardrails are written in code first.
 - Every agent run is traced. Agent changes come with offline tests (`agent/test_prod_agent.py`) that run without an API key.
+- Code an agent writes runs only in a sandbox (`SandboxAgent`), on copies of the data and without our environment variables.
 - Never open, print or copy .env files. Use .env.example to see which variables exist.
 - Never open, print or copy .env files. Use .env.example to see which variables exist.
 

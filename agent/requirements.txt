@@ -1,1 +1,1 @@
-openai-agents[viz]==0.24.0
+openai-agents[viz,realtime]==0.24.0
